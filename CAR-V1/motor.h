@@ -3,6 +3,7 @@
 
 #include "stdlib.h"
 #include "ti_msp_dl_config.h"
+// #include "ti/devices/msp/peripherals/hw_gptimer.h"
 
 #define MOTOR_SPEED_RERATIO 20
 #define PULSE_PER_ROUND 13
@@ -67,7 +68,7 @@ typedef struct
     GPIO_Regs *forward_GPIO_PORT;
     GPIO_Regs *reverse_GPIO_PORT;
     DL_TIMER_CC_INDEX PWM_Channel;
-    GPTIMER_Regs* PWM_Inst; //dont change
+    GPTIMER_Regs* PWM_Inst;
 } motor_t;
 
 motor_t motorA, motorB, motorC, motorD;
