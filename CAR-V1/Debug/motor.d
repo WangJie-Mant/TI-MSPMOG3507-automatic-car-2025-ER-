@@ -1,6 +1,6 @@
 # FIXED
 
-empty.o: ../empty.c \
+motor.o: ../motor.c ../motor.h \
  ti_msp_dl_config.h \
  C:/ti/mspm0_sdk_2_05_00_05/source/ti/devices/msp/msp.h \
  C:/ti/mspm0_sdk_2_05_00_05/source/ti/devices/DeviceFamily.h \
@@ -74,8 +74,8 @@ empty.o: ../empty.c \
  C:/ti/mspm0_sdk_2_05_00_05/source/ti/driverlib/dl_vref.h \
  C:/ti/mspm0_sdk_2_05_00_05/source/ti/driverlib/dl_wwdt.h \
  C:/ti/mspm0_sdk_2_05_00_05/source/ti/driverlib/m0p/dl_interrupt.h \
- C:/ti/mspm0_sdk_2_05_00_05/source/ti/driverlib/m0p/dl_systick.h \
- ../motor.h
+ C:/ti/mspm0_sdk_2_05_00_05/source/ti/driverlib/m0p/dl_systick.h
+../motor.h:
 ti_msp_dl_config.h:
 C:/ti/mspm0_sdk_2_05_00_05/source/ti/devices/msp/msp.h:
 C:/ti/mspm0_sdk_2_05_00_05/source/ti/devices/DeviceFamily.h:
@@ -150,4 +150,3 @@ C:/ti/mspm0_sdk_2_05_00_05/source/ti/driverlib/dl_vref.h:
 C:/ti/mspm0_sdk_2_05_00_05/source/ti/driverlib/dl_wwdt.h:
 C:/ti/mspm0_sdk_2_05_00_05/source/ti/driverlib/m0p/dl_interrupt.h:
 C:/ti/mspm0_sdk_2_05_00_05/source/ti/driverlib/m0p/dl_systick.h:
-../motor.h:

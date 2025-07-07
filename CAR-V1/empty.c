@@ -32,6 +32,8 @@
 
 #include "ti_msp_dl_config.h"
 #include <stdio.h>
+#include "motor.h"
+
 
 /*
 UART
@@ -54,10 +56,14 @@ void UART0_sendChar(const char ch);
 void PWM_setDuty(float duty, GPTIMER_Regs* PWM_Inst, DL_TIMER_CC_INDEX PWM_Channel);
 void PWM_setFrequency(uint32_t freq, GPTIMER_Regs* PWM_Inst);
 int INF_getGPIOstate(GPIO_Regs* gpio, uint32_t pin);
-void Motor_Set(int speed, uint32_t in1_pin, uint32_t in2_pin, GPTIMER_Regs* pwm_inst, DL_TIMER_CC_INDEX pwm_ch);
+void Motor_Set(int speed, motor_t *p);
 void MOTOR_setSpeed(int speedA, int speedB, int speedC, int speedD);
 double limit_abs(double x, double maxx);
-double MOTOR_getSpeed();
+//double MOTOR_getSpeed();
+void Motor_Set_Position(motor_t *motor);
+void Motor_Set_Speed(motor_t *motor);
+void Motor_Stop(motor_t *motor);
+void Motor_Set_Duty(float duty, motor_t *motor);
 
 
 
@@ -74,15 +80,6 @@ double MOTOR_getSpeed();
 #define MOTOR_D_PWM_CH  GPIO_PWM_MOTOR_C3_IDX
 
 #define SERVO_MIDDLE                0
-#define MOTOR_BASIC_SPEED           100
-//motor pid paras
-#define MOTOR_PID_KP                0.1
-#define MOTOR_PID_KI                0
-#define MOTOR_PID_KD                0.1
-#define MOTOR_PID_OUT_MAX           0
-#define MOTOR_PID_POUT_MAX          0
-#define MOTOR_PID_IOUT_MAX          0
-#define MOTOR_PID_DOUT_MAX          0
 //inf pid paras
 #define INF_PID_KP                  0.1
 #define INF_PID_KI                  0
@@ -97,32 +94,11 @@ double MOTOR_getSpeed();
 
 volatile unsigned int delay_times = 0;
 volatile unsigned int period = 32000;
-volatile uint32_t Encoder_Gpios[4][2] = {ENCODER_INPUT_E1A_PIN, ENCODER_INPUT_E1B_PIN, 
-                                        ENCODER_INPUT_E2A_PIN, ENCODER_INPUT_E2B_PIN, 
-                                        ENCODER_INPUT_E3A_PIN, ENCODER_INPUT_E3B_PIN,
-                                        ENCODER_INPUT_E4A_PIN, ENCODER_INPUT_E4B_PIN};
 char buff[64];
 double weights[4] = {-2, -1, 1, 2};
+motor_t motors[4];
 double INF_Data_Sum = 0;
 double Wheel_Distance = 0;
-typedef struct
-{
-    int32_t count;
-    int8_t direction;
-    uint8_t lastA;
-    uint8_t lastB;
-    uint32_t encoderA_gpio;
-    uint32_t encoderB_gpio;
-} Encoder_t;
-typedef struct
-{
-    double kp, ki, kd;
-    double target, current;
-    double error, lasterror;
-    double out, pout, iout, dout;
-    double pout_max, iout_max, dout_max, out_max;
-} pid_t;
-Encoder_t Motors_Encoder[4];
 
 //PID Part
 void pid_init(pid_t *p, double kp, double ki, double kd, 
@@ -143,14 +119,17 @@ double out_max, double pout_max, double iout_max, double dout_max)
     p->iout_max=iout_max;
     p->pout_max = pout_max;
     p->dout_max = dout_max;
+    p->dead_zone = 0;
 }
 
 double pid_calc(pid_t *p, double target, double current)
 {
     p->target=target;
     p->current=current;
-    p->lasterror=p->error;
+    
     p->error=p->target-p->current;
+
+    if (p->error < p->dead_zone && p->error > -p->dead_zone) p->error = 0;
 
     p->pout = limit_abs(p->kp*p->error, p->pout_max);
     p->iout+=p->ki * p->error;
@@ -159,6 +138,7 @@ double pid_calc(pid_t *p, double target, double current)
 
     p->out=p->pout+p->iout+p->dout;
     p->out=limit_abs(p->out,p->out_max);
+    p->lasterror=p->error;
     return p->out;
 }
 
@@ -173,104 +153,33 @@ double INF_pid_calc(pid_t *p)
     return p->out;
 }
 
-//Encoder Part
-void Encoder_init(Encoder_t *p, uint32_t encoderA_gpio, uint32_t encoderB_gpio)
+void motors_init()
 {
-    p->count = 0;
-    p->direction = 0;
-    p->lastA = 0;
-    p->lastB = 0;
-    p->encoderA_gpio = encoderA_gpio;
-    p->encoderB_gpio = encoderB_gpio;
+    motors[0] = motorA;
+    motors[1] = motorB;
+    motors[2] = motorC;
+    motors[3] = motorD;
 }
 
-void EncoderA_Update(Encoder_t *p)
-{
-    bool A_state = (DL_GPIO_readPins(ENCODER_INPUT_PORT, p->encoderA_gpio) != 0)?1:0;
-    bool B_state = (DL_GPIO_readPins(ENCODER_INPUT_PORT, p->encoderB_gpio) != 0)?1:0;
-
-    if (A_state)
-    {
-        if (B_state)                        //B高电平,反转
-        {
-            p->direction = -1;
-            p->count--;
-        }
-        else
-        {
-            p->direction = 1;
-            p->count++;
-        }
-        
-    }
-    else                                    //A下降沿 
-    {
-        if (B_state)                        //B高电平，正转
-        {
-            p->direction = 1;
-            p->count++;
-        }
-        else
-        {
-            p->direction = -1;
-            p->count--;
-        }
-    }
-    p->lastA = A_state;
-    p->lastB = B_state;
-}
-
-void EncoderB_Update(Encoder_t *p)
-{
-    bool A_State = (DL_GPIO_readPins(ENCODER_INPUT_PORT, p->encoderA_gpio) != 0)?1:0;
-    bool B_State = (DL_GPIO_readPins(ENCODER_INPUT_PORT, p->encoderB_gpio) != 0)?1:0;
-    if (B_State)                            
-    {
-        if (A_State)                        //A高电平，正转                        
-        {
-            p->direction = 1;
-            p->count--;
-        }
-        else
-        {
-            p->direction = -1;
-            p->count++;
-        }
-        
-    }
-    else                                    
-    {
-        if (A_State)                        
-        {
-            p->direction = -1;
-            p->count--;
-        }
-        else
-        {
-            p->direction = 1;
-            p->count++;
-        }
-    }
-    p->lastA = A_State;
-    p->lastB = B_State;
-}
-
-int main(void)
-{
+int main(void){
     SYSCFG_DL_init();
 
-    NVIC_EnableIRQ(ENCODER_INPUT_INT_IRQN);
-
     //declarations
-    pid_t Motors_Pid[4], INF_Pid;
 
+    motor_Init();
+    motors_init();
+    pid_t INF_Pid;
+
+    pid_init(&INF_Pid, INF_PID_KP, INF_PID_KI, INF_PID_KD, INF_PID_OUT_MAX, INF_PID_POUT_MAX, INF_PID_IOUT_MAX, INF_PID_DOUT_MAX);
+    for (int i = 0 ; i <4; i++)
+        pid_init(&motors[i].speed_pid, MOTOR_PID_KP, MOTOR_PID_KI, MOTOR_PID_KD, MOTOR_PID_OUT_MAX, MOTOR_PID_POUT_MAX, MOTOR_PID_IOUT_MAX,MOTOR_PID_DOUT_MAX);
     for (int i = 0; i<4; i++)
-        pid_init(&Motors_Pid[i], MOTOR_PID_KP, MOTOR_PID_KI, MOTOR_PID_KD, MOTOR_PID_OUT_MAX, MOTOR_PID_POUT_MAX, MOTOR_PID_IOUT_MAX, MOTOR_PID_DOUT_MAX);
-    pid_init(&INF_Pid, INF_PID_KP, INF_PID_KI, INF_PID_KD,INF_PID_OUT_MAX, INF_PID_IOUT_MAX, INF_PID_DOUT_MAX, INF_PID_OUT_MAX);
+        pid_init(&motors[i].pos_pid, MOTOR_POS_KP, MOTOR_POS_KI, MOTOR_POS_KD, MOTOR_POS_OUT_MAX, MOTOR_POS_POUT_MAX, MOTOR_POS_IOUT_MAX, MOTOR_POS_DOUT_MAX);
+
 
     for (int i = 0; i<4; i++)
     {
-        Encoder_init(&Motors_Encoder[i], Encoder_Gpios[i][0], Encoder_Gpios[i][1]);
+        pid_init(&motors[i].pos_pid, MOTOR_POS_KP, MOTOR_POS_KI, MOTOR_POS_KD, MOTOR_POS_OUT_MAX, MOTOR_POS_POUT_MAX, MOTOR_POS_IOUT_MAX, MOTOR_POS_DOUT_MAX);
     }
 
     while (1) {
@@ -306,35 +215,16 @@ int main(void)
         double VR_Target = MOTOR_BASIC_SPEED + (Wheel_Distance)/2.0 * omega_d;
 
         //将轮速写入电机pid
-        for (int i = 0; i<4; i+=2)
-        {
-            Motors_Pid[i].target = VL_Target;
-        }
-        for (int i = 1; i<4; i+=2)
-        {
-            Motors_Pid[i].target = VR_Target;
-        }
         //电机pid部分
-        //获取编码器轮速和转动方向
-        
-        
+        //获取编码器轮速和转动方向，已经在motor.c中的中断实现
+        //计算速度pid控制量：
+        double pwm_left = limit_abs(pid_calc(&motorA.speed_pid, VL_Target, motorA.encoder.speed),1.0f);
+        double pwm_right = limit_abs(pid_calc(&motorB.speed_pid, VR_Target, motorB.encoder.speed), 1.0f);
 
-        //使用逻辑判断实现循迹
-        if (L2 == BLACK && R2 == WHITE)             //线在左外侧
-            MOTOR_setSpeed(0, 100, 0, 100);
-        else if (L2 == WHITE && R2 == BLACK)        //线在右外侧
-            MOTOR_setSpeed(100, 0, 100, 0);
-        else if (L2 == WHITE && R2 == WHITE)
-        {
-            if (L1 == BLACK && R1 == WHITE)         //线在左内侧 
-                MOTOR_setSpeed(50, 100, 50, 100);
-            else if (L1 == WHITE && R1 == BLACK)    //线在右内侧
-                MOTOR_setSpeed(100, 50, 100, 50);
-            else if (L1 == BLACK && R1 == BLACK)    //线在中央
-                MOTOR_setSpeed(100, 100, 100, 100);
-        }
-        else if (L2 == BLACK && L1 == BLACK && R1 == BLACK && R2 == BLACK)
-            MOTOR_setSpeed(0, 0, 0, 0);
+        Motor_Set_Duty(pwm_left, &motorA);
+        Motor_Set_Duty(pwm_right, &motorB);
+        Motor_Set_Duty(pwm_left, &motorC);
+        Motor_Set_Duty(pwm_right, &motorD);
     }
 }
 
@@ -377,34 +267,57 @@ int INF_getGPIOstate(GPIO_Regs* gpio, uint32_t pin)
     return (DL_GPIO_readPins(gpio, pin) != 0)? 1:0;
 }
 
-void Motor_Set(int speed, uint32_t in1_pin, uint32_t in2_pin, GPTIMER_Regs* PWM_Inst, DL_TIMER_CC_INDEX PWM_Channel)
+
+void Motor_Set(int speed, motor_t *p)
 {
-    if(speed > 0)
+    //-255 <= speed <= 255 
+    if (speed > 0)
     {
-        DL_GPIO_writePins(MOTORS_PORT, in1_pin);
-        DL_GPIO_clearPins(MOTORS_PORT, in2_pin);
-        PWM_setDuty((float)speed/255.0f, PWM_Inst, PWM_Channel);
+        PWM_setDuty((float)speed/255.0f, p->PWM_Inst, p->PWM_Channel);
+        DL_GPIO_writePins(p->forward_GPIO_PORT, p->forward_GPIO_PIN);
+        DL_GPIO_clearPins(p->reverse_GPIO_PORT, p->reverse_GPIO_PIN);
     }
-    else if (speed<0)
+    else if (speed < 0)
     {
-        DL_GPIO_clearPins(MOTORS_PORT, in1_pin);
-        DL_GPIO_writePins(MOTORS_PORT, in2_pin);
-        PWM_setDuty((float)(-speed)/255.0f, PWM_Inst, PWM_Channel);
+        PWM_setDuty((float)(-speed) / 255.0f, p->PWM_Inst, p->PWM_Channel);
+        DL_GPIO_writePins(p->reverse_GPIO_PORT, p->reverse_GPIO_PIN);
+        DL_GPIO_clearPins(p->forward_GPIO_PORT, p->forward_GPIO_PIN);
     }
-    else
+    else {
+        PWM_setDuty(0, p->PWM_Inst, p->PWM_Channel);
+        DL_GPIO_clearPins(p->forward_GPIO_PORT, p->forward_GPIO_PIN);
+        DL_GPIO_clearPins(p->reverse_GPIO_PORT, p->reverse_GPIO_PIN);
+    }
+}
+
+
+void Motor_Set_Duty(float duty, motor_t *p)
+{
+    if (duty > 0)
     {
-        DL_GPIO_clearPins(MOTORS_PORT, in1_pin);
-        DL_GPIO_clearPins(MOTORS_PORT, in2_pin);
-        PWM_setDuty(0, PWM_Inst, PWM_Channel);   
+        PWM_setDuty(duty, p->PWM_Inst, p->PWM_Channel);
+        DL_GPIO_writePins(p->forward_GPIO_PORT, p->forward_GPIO_PIN);
+        DL_GPIO_clearPins(p->reverse_GPIO_PORT, p->reverse_GPIO_PIN);
+    }
+    else if (duty < 0)
+    {
+        PWM_setDuty(-duty, p->PWM_Inst, p->PWM_Channel);
+        DL_GPIO_writePins(p->reverse_GPIO_PORT, p->reverse_GPIO_PIN);
+        DL_GPIO_clearPins(p->forward_GPIO_PORT, p->forward_GPIO_PIN);
+    }
+    else {
+        PWM_setDuty(0, p->PWM_Inst, p->PWM_Channel);
+        DL_GPIO_clearPins(p->forward_GPIO_PORT, p->forward_GPIO_PIN);
+        DL_GPIO_clearPins(p->reverse_GPIO_PORT, p->reverse_GPIO_PIN);
     }
 }
 
 void MOTOR_setSpeed(int speedA, int speedB, int speedC, int speedD)
 {
-    Motor_Set(speedA, MOTORS_AIN1_PIN, MOTORS_AIN2_PIN, PWM_MOTOR_INST, GPIO_PWM_MOTOR_C0_IDX);
-    Motor_Set(speedB, MOTORS_BIN1_PIN, MOTORS_BIN2_PIN, PWM_MOTOR_INST, GPIO_PWM_MOTOR_C1_IDX);
-    Motor_Set(speedC, MOTORS_CIN1_PIN, MOTORS_CIN2_PIN, PWM_MOTOR_INST, GPIO_PWM_MOTOR_C2_IDX);
-    Motor_Set(speedD, MOTORS_DIN1_PIN, MOTORS_DIN2_PIN, PWM_MOTOR_INST, GPIO_PWM_MOTOR_C3_IDX);
+    Motor_Set(speedA, &motors[0]);
+    Motor_Set(speedB, &motors[1]);
+    Motor_Set(speedC, &motors[2]);
+    Motor_Set(speedD, &motors[3]);
 }
 
 double limit_abs(double x, double maxx)
@@ -414,6 +327,31 @@ double limit_abs(double x, double maxx)
     else return x;
 }
 
+void Motor_Set_Speed(motor_t *motor)
+{
+    motor->duty = pid_calc(&motor->speed_pid, motor->speed, motor->encoder.speed);
+    PWM_setDuty(motor->duty, motor->PWM_Inst, motor->PWM_Channel);
+}
+
+void Motor_Set_Position(motor_t *motor)
+{
+    motor->pos_pulse = (int)((motor->position*PULSE_PER_CYCLE)/(LINE_SPEED_C));
+    motor->speed = pid_calc(&motor->pos_pid, motor->pos_pulse, motor->encoder.count);
+    Motor_Set_Speed(motor);
+}
+
+void Motor_Stop(motor_t *motor)
+{
+    motor->speed = 0;
+    Motor_Set_Speed(motor);
+    if (motor->encoder.speed == 0)
+    {
+        motor->encoder.count = 0;
+        motor->encoder.lastcount = 0;
+        motor->speed_pid.iout = 0;
+    }
+
+}
 
 //NVIC
 void SysTick_Handler(void)
@@ -424,51 +362,5 @@ void SysTick_Handler(void)
     }
 }
 
-void GROUP1_IRQHandler(void)                        //GROUP1->GPIOA/B
-{
-    switch(DL_Interrupt_getPendingGroup(DL_Interrupt_GROUP_1))
-    {
-        case ENCODER_INPUT_E1A_IIDX:                //E1A被触发
-        {
-            EncoderA_Update(&Motors_Encoder[0]);
-            break;
-        }
-        case ENCODER_INPUT_E1B_IIDX:                //E1B被触发
-        {
-            EncoderB_Update(&Motors_Encoder[0]);
-            break;
-        }
-        case ENCODER_INPUT_E2A_IIDX:
-        {
-            EncoderA_Update(&Motors_Encoder[1]);
-            break;
-        }
-        case ENCODER_INPUT_E2B_IIDX:
-        {
-            EncoderB_Update(&Motors_Encoder[1]);
-            break;
-        }
-        case ENCODER_INPUT_E3A_IIDX:
-        {
-            EncoderA_Update(&Motors_Encoder[2]);
-            break;
-        }
-        case ENCODER_INPUT_E3B_IIDX:
-        {
-            EncoderB_Update(&Motors_Encoder[2]);
-            break;
-        }
-        case ENCODER_INPUT_E4A_IIDX:
-        {
-            EncoderA_Update(&Motors_Encoder[3]);
-            break;
-        }
-        case ENCODER_INPUT_E4B_IIDX:
-        {
-            EncoderB_Update(&Motors_Encoder[3]);
-            break;
-        }
-        default: break;
-    }
-}
+
 

@@ -41,6 +41,9 @@
 #include "ti_msp_dl_config.h"
 
 DL_TimerA_backupConfig gPWM_MOTORBackup;
+DL_TimerG_backupConfig gENCODER2_ABackup;
+DL_TimerG_backupConfig gENCODER3_ABackup;
+DL_TimerA_backupConfig gCLOCKBackup;
 
 /*
  *  ======== SYSCFG_DL_init ========
@@ -54,11 +57,19 @@ SYSCONFIG_WEAK void SYSCFG_DL_init(void)
     SYSCFG_DL_SYSCTL_init();
     SYSCFG_DL_PWM_MOTOR_init();
     SYSCFG_DL_PWM_SERVO_init();
+    SYSCFG_DL_ENCODER1_A_init();
+    SYSCFG_DL_ENCODER2_A_init();
+    SYSCFG_DL_ENCODER3_A_init();
+    SYSCFG_DL_ENCODER4_A_init();
+    SYSCFG_DL_CLOCK_init();
     SYSCFG_DL_I2C_SCR_init();
     SYSCFG_DL_UART_0_init();
     SYSCFG_DL_SYSTICK_init();
     /* Ensure backup structures have no valid state */
 	gPWM_MOTORBackup.backupRdy 	= false;
+	gENCODER2_ABackup.backupRdy 	= false;
+	gENCODER3_ABackup.backupRdy 	= false;
+	gCLOCKBackup.backupRdy 	= false;
 
 
 }
@@ -71,6 +82,9 @@ SYSCONFIG_WEAK bool SYSCFG_DL_saveConfiguration(void)
     bool retStatus = true;
 
 	retStatus &= DL_TimerA_saveConfiguration(PWM_MOTOR_INST, &gPWM_MOTORBackup);
+	retStatus &= DL_TimerG_saveConfiguration(ENCODER2_A_INST, &gENCODER2_ABackup);
+	retStatus &= DL_TimerG_saveConfiguration(ENCODER3_A_INST, &gENCODER3_ABackup);
+	retStatus &= DL_TimerA_saveConfiguration(CLOCK_INST, &gCLOCKBackup);
 
     return retStatus;
 }
@@ -81,6 +95,9 @@ SYSCONFIG_WEAK bool SYSCFG_DL_restoreConfiguration(void)
     bool retStatus = true;
 
 	retStatus &= DL_TimerA_restoreConfiguration(PWM_MOTOR_INST, &gPWM_MOTORBackup, false);
+	retStatus &= DL_TimerG_restoreConfiguration(ENCODER2_A_INST, &gENCODER2_ABackup, false);
+	retStatus &= DL_TimerG_restoreConfiguration(ENCODER3_A_INST, &gENCODER3_ABackup, false);
+	retStatus &= DL_TimerA_restoreConfiguration(CLOCK_INST, &gCLOCKBackup, false);
 
     return retStatus;
 }
@@ -91,6 +108,11 @@ SYSCONFIG_WEAK void SYSCFG_DL_initPower(void)
     DL_GPIO_reset(GPIOB);
     DL_TimerA_reset(PWM_MOTOR_INST);
     DL_TimerG_reset(PWM_SERVO_INST);
+    DL_TimerG_reset(ENCODER1_A_INST);
+    DL_TimerG_reset(ENCODER2_A_INST);
+    DL_TimerG_reset(ENCODER3_A_INST);
+    DL_TimerG_reset(ENCODER4_A_INST);
+    DL_TimerA_reset(CLOCK_INST);
     DL_I2C_reset(I2C_SCR_INST);
     DL_UART_Main_reset(UART_0_INST);
 
@@ -99,6 +121,11 @@ SYSCONFIG_WEAK void SYSCFG_DL_initPower(void)
     DL_GPIO_enablePower(GPIOB);
     DL_TimerA_enablePower(PWM_MOTOR_INST);
     DL_TimerG_enablePower(PWM_SERVO_INST);
+    DL_TimerG_enablePower(ENCODER1_A_INST);
+    DL_TimerG_enablePower(ENCODER2_A_INST);
+    DL_TimerG_enablePower(ENCODER3_A_INST);
+    DL_TimerG_enablePower(ENCODER4_A_INST);
+    DL_TimerA_enablePower(CLOCK_INST);
     DL_I2C_enablePower(I2C_SCR_INST);
     DL_UART_Main_enablePower(UART_0_INST);
 
@@ -118,6 +145,11 @@ SYSCONFIG_WEAK void SYSCFG_DL_GPIO_init(void)
     DL_GPIO_enableOutput(GPIO_PWM_MOTOR_C3_PORT, GPIO_PWM_MOTOR_C3_PIN);
     DL_GPIO_initPeripheralOutputFunction(GPIO_PWM_SERVO_C0_IOMUX,GPIO_PWM_SERVO_C0_IOMUX_FUNC);
     DL_GPIO_enableOutput(GPIO_PWM_SERVO_C0_PORT, GPIO_PWM_SERVO_C0_PIN);
+
+    DL_GPIO_initPeripheralInputFunction(GPIO_ENCODER1_A_C0_IOMUX,GPIO_ENCODER1_A_C0_IOMUX_FUNC);
+    DL_GPIO_initPeripheralInputFunction(GPIO_ENCODER2_A_C0_IOMUX,GPIO_ENCODER2_A_C0_IOMUX_FUNC);
+    DL_GPIO_initPeripheralInputFunction(GPIO_ENCODER3_A_C0_IOMUX,GPIO_ENCODER3_A_C0_IOMUX_FUNC);
+    DL_GPIO_initPeripheralInputFunction(GPIO_ENCODER4_A_C0_IOMUX,GPIO_ENCODER4_A_C0_IOMUX_FUNC);
 
     DL_GPIO_initPeripheralInputFunctionFeatures(GPIO_I2C_SCR_IOMUX_SDA,
         GPIO_I2C_SCR_IOMUX_SDA_FUNC, DL_GPIO_INVERSION_DISABLE,
@@ -175,62 +207,22 @@ SYSCONFIG_WEAK void SYSCFG_DL_GPIO_init(void)
 
     DL_GPIO_initDigitalOutput(MOTORS_DIN2_IOMUX);
 
-    DL_GPIO_initDigitalInputFeatures(ENCODER_INPUT_E1A_IOMUX,
+    DL_GPIO_initDigitalInputFeatures(GPIO_ENCODER_ENCODER1_B_IOMUX,
 		 DL_GPIO_INVERSION_DISABLE, DL_GPIO_RESISTOR_NONE,
 		 DL_GPIO_HYSTERESIS_DISABLE, DL_GPIO_WAKEUP_DISABLE);
 
-    DL_GPIO_initDigitalInputFeatures(ENCODER_INPUT_E1B_IOMUX,
+    DL_GPIO_initDigitalInputFeatures(GPIO_ENCODER_ENCODER2_B_IOMUX,
 		 DL_GPIO_INVERSION_DISABLE, DL_GPIO_RESISTOR_NONE,
 		 DL_GPIO_HYSTERESIS_DISABLE, DL_GPIO_WAKEUP_DISABLE);
 
-    DL_GPIO_initDigitalInputFeatures(ENCODER_INPUT_E2A_IOMUX,
+    DL_GPIO_initDigitalInputFeatures(GPIO_ENCODER_ENCODER3_B_IOMUX,
 		 DL_GPIO_INVERSION_DISABLE, DL_GPIO_RESISTOR_NONE,
 		 DL_GPIO_HYSTERESIS_DISABLE, DL_GPIO_WAKEUP_DISABLE);
 
-    DL_GPIO_initDigitalInputFeatures(ENCODER_INPUT_E2B_IOMUX,
+    DL_GPIO_initDigitalInputFeatures(GPIO_ENCODER_ENCODER4_B_IOMUX,
 		 DL_GPIO_INVERSION_DISABLE, DL_GPIO_RESISTOR_NONE,
 		 DL_GPIO_HYSTERESIS_DISABLE, DL_GPIO_WAKEUP_DISABLE);
 
-    DL_GPIO_initDigitalInputFeatures(ENCODER_INPUT_E3A_IOMUX,
-		 DL_GPIO_INVERSION_DISABLE, DL_GPIO_RESISTOR_NONE,
-		 DL_GPIO_HYSTERESIS_DISABLE, DL_GPIO_WAKEUP_DISABLE);
-
-    DL_GPIO_initDigitalInputFeatures(ENCODER_INPUT_E3B_IOMUX,
-		 DL_GPIO_INVERSION_DISABLE, DL_GPIO_RESISTOR_NONE,
-		 DL_GPIO_HYSTERESIS_DISABLE, DL_GPIO_WAKEUP_DISABLE);
-
-    DL_GPIO_initDigitalInputFeatures(ENCODER_INPUT_E4A_IOMUX,
-		 DL_GPIO_INVERSION_DISABLE, DL_GPIO_RESISTOR_NONE,
-		 DL_GPIO_HYSTERESIS_DISABLE, DL_GPIO_WAKEUP_DISABLE);
-
-    DL_GPIO_initDigitalInputFeatures(ENCODER_INPUT_E4B_IOMUX,
-		 DL_GPIO_INVERSION_DISABLE, DL_GPIO_RESISTOR_NONE,
-		 DL_GPIO_HYSTERESIS_DISABLE, DL_GPIO_WAKEUP_DISABLE);
-
-    DL_GPIO_setLowerPinsPolarity(GPIOA, DL_GPIO_PIN_7_EDGE_RISE_FALL |
-		DL_GPIO_PIN_9_EDGE_RISE_FALL |
-		DL_GPIO_PIN_8_EDGE_RISE_FALL |
-		DL_GPIO_PIN_12_EDGE_RISE_FALL |
-		DL_GPIO_PIN_14_EDGE_RISE_FALL |
-		DL_GPIO_PIN_15_EDGE_RISE_FALL);
-    DL_GPIO_setUpperPinsPolarity(GPIOA, DL_GPIO_PIN_21_EDGE_RISE_FALL |
-		DL_GPIO_PIN_22_EDGE_RISE_FALL);
-    DL_GPIO_clearInterruptStatus(GPIOA, ENCODER_INPUT_E1A_PIN |
-		ENCODER_INPUT_E1B_PIN |
-		ENCODER_INPUT_E2A_PIN |
-		ENCODER_INPUT_E2B_PIN |
-		ENCODER_INPUT_E3A_PIN |
-		ENCODER_INPUT_E3B_PIN |
-		ENCODER_INPUT_E4A_PIN |
-		ENCODER_INPUT_E4B_PIN);
-    DL_GPIO_enableInterrupt(GPIOA, ENCODER_INPUT_E1A_PIN |
-		ENCODER_INPUT_E1B_PIN |
-		ENCODER_INPUT_E2A_PIN |
-		ENCODER_INPUT_E2B_PIN |
-		ENCODER_INPUT_E3A_PIN |
-		ENCODER_INPUT_E3B_PIN |
-		ENCODER_INPUT_E4A_PIN |
-		ENCODER_INPUT_E4B_PIN);
     DL_GPIO_clearPins(GPIOB, LED_LED1_PIN |
 		MOTORS_AIN1_PIN |
 		MOTORS_AIN2_PIN |
@@ -375,6 +367,194 @@ SYSCONFIG_WEAK void SYSCFG_DL_PWM_SERVO_init(void) {
 
     
     DL_TimerG_setCCPDirection(PWM_SERVO_INST , DL_TIMER_CC0_OUTPUT );
+
+
+}
+
+
+
+/*
+ * Timer clock configuration to be sourced by BUSCLK /  (32000000 Hz)
+ * timerClkFreq = (timerClkSrc / (timerClkDivRatio * (timerClkPrescale + 1)))
+ *   32000000 Hz = 32000000 Hz / (1 * (0 + 1))
+ */
+static const DL_TimerG_ClockConfig gENCODER1_AClockConfig = {
+    .clockSel    = DL_TIMER_CLOCK_BUSCLK,
+    .divideRatio = DL_TIMER_CLOCK_DIVIDE_1,
+    .prescale = 0U
+};
+
+/*
+ * Timer load value (where the counter starts from) is calculated as (timerPeriod * timerClockFreq) - 1
+ * ENCODER1_A_INST_LOAD_VALUE = (1ms * 32000000 Hz) - 1
+ */
+static const DL_TimerG_CaptureConfig gENCODER1_ACaptureConfig = {
+    .captureMode    = DL_TIMER_CAPTURE_MODE_EDGE_TIME,
+    .period         = ENCODER1_A_INST_LOAD_VALUE,
+    .startTimer     = DL_TIMER_START,
+    .edgeCaptMode   = DL_TIMER_CAPTURE_EDGE_DETECTION_MODE_RISING,
+    .inputChan      = DL_TIMER_INPUT_CHAN_0,
+    .inputInvMode   = DL_TIMER_CC_INPUT_INV_NOINVERT,
+};
+
+SYSCONFIG_WEAK void SYSCFG_DL_ENCODER1_A_init(void) {
+
+    DL_TimerG_setClockConfig(ENCODER1_A_INST,
+        (DL_TimerG_ClockConfig *) &gENCODER1_AClockConfig);
+
+    DL_TimerG_initCaptureMode(ENCODER1_A_INST,
+        (DL_TimerG_CaptureConfig *) &gENCODER1_ACaptureConfig);
+    DL_TimerG_enableInterrupt(ENCODER1_A_INST , DL_TIMERG_INTERRUPT_CC0_DN_EVENT);
+
+    DL_TimerG_enableClock(ENCODER1_A_INST);
+
+}
+
+/*
+ * Timer clock configuration to be sourced by BUSCLK /  (32000000 Hz)
+ * timerClkFreq = (timerClkSrc / (timerClkDivRatio * (timerClkPrescale + 1)))
+ *   32000000 Hz = 32000000 Hz / (1 * (0 + 1))
+ */
+static const DL_TimerG_ClockConfig gENCODER2_AClockConfig = {
+    .clockSel    = DL_TIMER_CLOCK_BUSCLK,
+    .divideRatio = DL_TIMER_CLOCK_DIVIDE_1,
+    .prescale = 0U
+};
+
+/*
+ * Timer load value (where the counter starts from) is calculated as (timerPeriod * timerClockFreq) - 1
+ * ENCODER2_A_INST_LOAD_VALUE = (1ms * 32000000 Hz) - 1
+ */
+static const DL_TimerG_CaptureConfig gENCODER2_ACaptureConfig = {
+    .captureMode    = DL_TIMER_CAPTURE_MODE_EDGE_TIME,
+    .period         = ENCODER2_A_INST_LOAD_VALUE,
+    .startTimer     = DL_TIMER_START,
+    .edgeCaptMode   = DL_TIMER_CAPTURE_EDGE_DETECTION_MODE_RISING,
+    .inputChan      = DL_TIMER_INPUT_CHAN_0,
+    .inputInvMode   = DL_TIMER_CC_INPUT_INV_NOINVERT,
+};
+
+SYSCONFIG_WEAK void SYSCFG_DL_ENCODER2_A_init(void) {
+
+    DL_TimerG_setClockConfig(ENCODER2_A_INST,
+        (DL_TimerG_ClockConfig *) &gENCODER2_AClockConfig);
+
+    DL_TimerG_initCaptureMode(ENCODER2_A_INST,
+        (DL_TimerG_CaptureConfig *) &gENCODER2_ACaptureConfig);
+    DL_TimerG_enableInterrupt(ENCODER2_A_INST , DL_TIMERG_INTERRUPT_CC0_DN_EVENT);
+
+    DL_TimerG_enableClock(ENCODER2_A_INST);
+
+}
+
+/*
+ * Timer clock configuration to be sourced by BUSCLK /  (32000000 Hz)
+ * timerClkFreq = (timerClkSrc / (timerClkDivRatio * (timerClkPrescale + 1)))
+ *   32000000 Hz = 32000000 Hz / (1 * (0 + 1))
+ */
+static const DL_TimerG_ClockConfig gENCODER3_AClockConfig = {
+    .clockSel    = DL_TIMER_CLOCK_BUSCLK,
+    .divideRatio = DL_TIMER_CLOCK_DIVIDE_1,
+    .prescale = 0U
+};
+
+/*
+ * Timer load value (where the counter starts from) is calculated as (timerPeriod * timerClockFreq) - 1
+ * ENCODER3_A_INST_LOAD_VALUE = (1ms * 32000000 Hz) - 1
+ */
+static const DL_TimerG_CaptureConfig gENCODER3_ACaptureConfig = {
+    .captureMode    = DL_TIMER_CAPTURE_MODE_EDGE_TIME,
+    .period         = ENCODER3_A_INST_LOAD_VALUE,
+    .startTimer     = DL_TIMER_START,
+    .edgeCaptMode   = DL_TIMER_CAPTURE_EDGE_DETECTION_MODE_RISING,
+    .inputChan      = DL_TIMER_INPUT_CHAN_0,
+    .inputInvMode   = DL_TIMER_CC_INPUT_INV_NOINVERT,
+};
+
+SYSCONFIG_WEAK void SYSCFG_DL_ENCODER3_A_init(void) {
+
+    DL_TimerG_setClockConfig(ENCODER3_A_INST,
+        (DL_TimerG_ClockConfig *) &gENCODER3_AClockConfig);
+
+    DL_TimerG_initCaptureMode(ENCODER3_A_INST,
+        (DL_TimerG_CaptureConfig *) &gENCODER3_ACaptureConfig);
+    DL_TimerG_enableInterrupt(ENCODER3_A_INST , DL_TIMERG_INTERRUPT_CC0_DN_EVENT);
+
+    DL_TimerG_enableClock(ENCODER3_A_INST);
+
+}
+
+/*
+ * Timer clock configuration to be sourced by BUSCLK /  (32000000 Hz)
+ * timerClkFreq = (timerClkSrc / (timerClkDivRatio * (timerClkPrescale + 1)))
+ *   32000000 Hz = 32000000 Hz / (1 * (0 + 1))
+ */
+static const DL_TimerG_ClockConfig gENCODER4_AClockConfig = {
+    .clockSel    = DL_TIMER_CLOCK_BUSCLK,
+    .divideRatio = DL_TIMER_CLOCK_DIVIDE_1,
+    .prescale = 0U
+};
+
+/*
+ * Timer load value (where the counter starts from) is calculated as (timerPeriod * timerClockFreq) - 1
+ * ENCODER4_A_INST_LOAD_VALUE = (1ms * 32000000 Hz) - 1
+ */
+static const DL_TimerG_CaptureConfig gENCODER4_ACaptureConfig = {
+    .captureMode    = DL_TIMER_CAPTURE_MODE_EDGE_TIME,
+    .period         = ENCODER4_A_INST_LOAD_VALUE,
+    .startTimer     = DL_TIMER_START,
+    .edgeCaptMode   = DL_TIMER_CAPTURE_EDGE_DETECTION_MODE_RISING,
+    .inputChan      = DL_TIMER_INPUT_CHAN_0,
+    .inputInvMode   = DL_TIMER_CC_INPUT_INV_NOINVERT,
+};
+
+SYSCONFIG_WEAK void SYSCFG_DL_ENCODER4_A_init(void) {
+
+    DL_TimerG_setClockConfig(ENCODER4_A_INST,
+        (DL_TimerG_ClockConfig *) &gENCODER4_AClockConfig);
+
+    DL_TimerG_initCaptureMode(ENCODER4_A_INST,
+        (DL_TimerG_CaptureConfig *) &gENCODER4_ACaptureConfig);
+    DL_TimerG_enableInterrupt(ENCODER4_A_INST , DL_TIMERG_INTERRUPT_CC0_DN_EVENT);
+
+    DL_TimerG_enableClock(ENCODER4_A_INST);
+
+}
+
+
+/*
+ * Timer clock configuration to be sourced by BUSCLK /  (32000000 Hz)
+ * timerClkFreq = (timerClkSrc / (timerClkDivRatio * (timerClkPrescale + 1)))
+ *   6400000 Hz = 32000000 Hz / (1 * (4 + 1))
+ */
+static const DL_TimerA_ClockConfig gCLOCKClockConfig = {
+    .clockSel    = DL_TIMER_CLOCK_BUSCLK,
+    .divideRatio = DL_TIMER_CLOCK_DIVIDE_1,
+    .prescale    = 4U,
+};
+
+/*
+ * Timer load value (where the counter starts from) is calculated as (timerPeriod * timerClockFreq) - 1
+ * CLOCK_INST_LOAD_VALUE = (10ms * 6400000 Hz) - 1
+ */
+static const DL_TimerA_TimerConfig gCLOCKTimerConfig = {
+    .period     = CLOCK_INST_LOAD_VALUE,
+    .timerMode  = DL_TIMER_TIMER_MODE_PERIODIC,
+    .startTimer = DL_TIMER_START,
+};
+
+SYSCONFIG_WEAK void SYSCFG_DL_CLOCK_init(void) {
+
+    DL_TimerA_setClockConfig(CLOCK_INST,
+        (DL_TimerA_ClockConfig *) &gCLOCKClockConfig);
+
+    DL_TimerA_initTimerMode(CLOCK_INST,
+        (DL_TimerA_TimerConfig *) &gCLOCKTimerConfig);
+    DL_TimerA_enableInterrupt(CLOCK_INST , DL_TIMERA_INTERRUPT_ZERO_EVENT);
+    DL_TimerA_enableClock(CLOCK_INST);
+
+
+
 
 
 }
